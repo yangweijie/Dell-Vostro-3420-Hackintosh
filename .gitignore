@@ -1,0 +1,21 @@
+# macOS / Windows 产生的元数据
+.DS_Store
+._*
+*/._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+System Volume Information
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*~
+
+# 本地测试产物
+*.log
+!EFI/**/*.txt
+/tmp/
