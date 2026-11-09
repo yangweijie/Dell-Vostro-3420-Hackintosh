@@ -18,6 +18,7 @@ Dell Vostro 3420（i5-1135G7 / Iris Xe / 无独显）上可日常使用的 OpenC
 | CPU | Intel Core i5-1135G7（Tiger Lake-U，4C/8T） | ✅ 原生 |
 | 核显 | Intel Iris Xe（`8086:9A49`） | ✅ 1536 MB / Metal 2 |
 | 独显 | 无 | — |
+| 内存 | 16 GB DDR4-2667 | 无需特殊配置 |
 | 硬盘 | SK hynix BC901 NVMe 256 GB | ✅ 原生 |
 | 有线 | Realtek RTL8168（`10ec:8168`） | ✅ 原生 |
 | 无线 | Realtek RTL8821CE（`10ec:c821`） | ✅ AirPortRTW + OCLP legacy 栈 |
@@ -58,6 +59,67 @@ Dell Vostro 3420（i5-1135G7 / Iris Xe / 无独显）上可日常使用的 OpenC
 | 配置引用完整性 | 102 个引用（ACPI / kext / driver / tool）全部存在 |
 
 也就是说：填上你自己的 SMBIOS 之后，这份 EFI 与验收通过的那份**完全等价**。
+
+---
+
+## 实机截图
+
+> 序列号、硬件 UUID、蓝牙设备名与用户名已打码。
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/about-this-mac.png" alt="关于本机"><br><sub>关于本机：MacBookPro16,1 / i5 四核 / 16 GB / Tahoe 26.7.2</sub></td>
+<td width="50%"><img src="docs/images/graphics.png" alt="图形卡与显示器"><br><sub>图形卡与显示器：Iris Xe、1536 MB、Metal 2、内屏 1920×1080 30 位色</sub></td>
+</tr>
+</table>
+
+<img src="docs/images/bluetooth.png" alt="蓝牙" width="560">
+<br><sub>蓝牙：开关可用，能发现并配对设备（设备名已打码）</sub>
+
+## 睡眠实测日志
+
+这是真实使用中的一段，不是构造出来的测试：合盖睡了 **2 小时 8 分**，中途有一次例行维护唤醒，
+最后开盖 **1.372 秒**唤醒。
+
+```text
+13:09:31  Sleep      Entering Sleep state due to 'Clamshell Sleep'       7248 secs
+15:10:19  DarkWake   DarkWake from Normal Sleep : due to RTC/Maintenance   45 secs
+15:11:04  Sleep      Entering Sleep state due to 'Maintenance Sleep'     1349 secs
+15:33:33  Wake       Wake from Normal Sleep : due to /UserActivity
+          WakeDetails  DriverReason:XHCI
+          WakeTime     WakeTime: 1.372 sec
+
+kern.sleeptime = 15:11:07
+kern.waketime  = 15:33:32
+Total Sleep/Wakes since boot : 2
+```
+
+三点值得注意：
+
+1. **7248 秒的睡眠时长**说明这是真正的 S3 挂起，不是"关屏待机"
+2. **DarkWake 由 RTC/Maintenance 触发**，和真 Mac 的行为一致
+3. 唤醒耗时 **1.372 秒**，唤醒源是 XHCI（开盖/按键）
+
+要判断"平台到底有没有 S3"，看这一行才是根因级证据 —— 本机打补丁前后差别就在这里：
+
+```bash
+log show --style compact --predicate 'process == "kernel" AND eventMessage CONTAINS "sleep states"' | tail -3
+```
+
+```text
+# 打补丁前
+(AppleACPIPlatform) ACPI: sleep states S4 S5
+# 打补丁后
+(AppleACPIPlatform) ACPI: sleep states S3 S4 S5
+```
+
+自己复核：
+
+```bash
+pmset -g log | grep -E "Entering Sleep|Wake from"
+pmset -g log | grep -E "WakeDetails|WakeTime|HibernateStats"
+sysctl kern.sleeptime kern.waketime
+```
 
 ## 快速开始
 

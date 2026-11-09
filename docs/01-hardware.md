@@ -7,7 +7,7 @@
 | CPU | Intel Core i5-1135G7 | 4 核 8 线程，Tiger Lake-U，基础 2.4 GHz |
 | 核显 | Intel Iris Xe Graphics | PCI `8086:9A49`，子系统 `1028:0B6A` |
 | 独显 | 无 | — |
-| 内存 | DDR4 | 本仓库未对内存做特殊配置 |
+| 内存 | 16 GB DDR4-2667 | 本仓库未对内存做特殊配置 |
 | 硬盘 | SK hynix BC901 NVMe 256 GB | PCIe NVMe，GPT |
 | 有线网卡 | Realtek RTL8168 | `10ec:8168`，子系统 `1028:0b6a` |
 | 无线网卡 | Realtek RTL8821CE | `10ec:c821`，Wi-Fi 5（802.11ac） |
