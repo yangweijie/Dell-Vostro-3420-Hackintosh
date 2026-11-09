@@ -33,7 +33,8 @@ Dell Vostro 3420（i5-1135G7 / Iris Xe / 无独显）上可日常使用的 OpenC
 
 | 功能 | 状态 | 说明 |
 |---|---|---|
-| 内屏 / 核显加速 | ✅ | Metal 2，亮度调节可用 |
+| 内屏 / 核显加速 | ✅ | Metal 2，内建屏正常显示 |
+| 亮度调节 / Fn+F6、F7 | ❌ | 背光由 EC 控制，macOS 接管不了，见[已知问题 8](docs/05-known-issues.md) |
 | 有线网络 | ✅ | 原生驱动 |
 | Wi-Fi | ✅ | 2.4/5 GHz、WPA2，睡眠唤醒后自动重连 |
 | 蓝牙 | ✅ | 可搜索、可配对、可连接 |
@@ -218,6 +219,8 @@ bash scripts/verify.sh
 见 [`docs/05-known-issues.md`](docs/05-known-issues.md)。要点：
 
 - 接力 / AirDrop 不可用（硬件限制）
+- 亮度不可调：Fn+F6/F7 无反应，控制中心滑块拖了屏幕不变（背光由 EC 控制，见第 8 条）
+- Fn+F8（投屏）、Fn+F10（PrtSc）在 macOS 没有对应功能；Fn+F10 在硬件层面就不发码
 - 触控板为轮询模式，比中断模式略耗电
 - 升级系统前必须看 [`docs/06-upgrade.md`](docs/06-upgrade.md)：`BlueToolFixup` 会让增量更新校验失败
 
