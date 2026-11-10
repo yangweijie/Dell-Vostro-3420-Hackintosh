@@ -34,7 +34,7 @@ Dell Vostro 3420（i5-1135G7 / Iris Xe / 无独显）上可日常使用的 OpenC
 | 功能 | 状态 | 说明 |
 |---|---|---|
 | 内屏 / 核显加速 | ✅ | Metal 2，内建屏正常显示 |
-| 亮度调节 / Fn+F6、F7 | ❌ | 背光由 EC 控制，macOS 接管不了，见[已知问题 8](docs/05-known-issues.md) |
+| 亮度调节 / Fn+F6、F7 | ✅ | 控制中心滑块与亮度键都可用（自编译 WhateverXe + `_UID=0x13`，见[修复 8](docs/04-fixes-explained.md)） |
 | 有线网络 | ✅ | 原生驱动 |
 | Wi-Fi | ✅ | 2.4/5 GHz、WPA2，睡眠唤醒后自动重连 |
 | 蓝牙 | ✅ | 可搜索、可配对、可连接 |
@@ -53,13 +53,15 @@ Dell Vostro 3420（i5-1135G7 / Iris Xe / 无独显）上可日常使用的 OpenC
 
 | 对比项 | 结果 |
 |---|---|
-| `EFI/OC` 文件数 | 实机 183 / 仓库 183 |
-| 文件内容 | 除 `config.plist` 外 **183 个文件逐字节一致** |
+| `EFI/OC` 文件数 | 实机 184 / 仓库 183（实机多出的那 1 个是 `ACPI/SSDT-PNLF.aml.orig.bak`，改 PNLF 前的备份，故意不收录） |
+| 文件内容 | 除 `config.plist` 外 **182 个文件逐字节一致** |
 | `config.plist` 差异 | 仅 4 处，全部是 SMBIOS 身份字段（序列号 / MLB / UUID / ROM）被替换为占位符 |
 | `ocvalidate` | `No issues found` |
 | 配置引用完整性 | 102 个引用（ACPI / kext / driver / tool）全部存在 |
 
 也就是说：填上你自己的 SMBIOS 之后，这份 EFI 与验收通过的那份**完全等价**。
+其中 `SSDT-PNLF.aml` 与 `WhateverXe` 二进制就是修好内屏亮度的版本
+（自定义部分见 [`docs/patches/`](docs/patches/)）。
 
 ---
 
@@ -219,7 +221,6 @@ bash scripts/verify.sh
 见 [`docs/05-known-issues.md`](docs/05-known-issues.md)。要点：
 
 - 接力 / AirDrop 不可用（硬件限制）
-- 亮度不可调：Fn+F6/F7 无反应，控制中心滑块拖了屏幕不变（背光由 EC 控制，见第 8 条）
 - Fn+F8（投屏）、Fn+F10（PrtSc）在 macOS 没有对应功能；Fn+F10 在硬件层面就不发码
 - 触控板为轮询模式，比中断模式略耗电
 - 升级系统前必须看 [`docs/06-upgrade.md`](docs/06-upgrade.md)：`BlueToolFixup` 会让增量更新校验失败

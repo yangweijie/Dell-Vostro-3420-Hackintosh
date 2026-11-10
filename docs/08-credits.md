@@ -21,11 +21,21 @@
 
 | 组件 | 版本 | 上游 | 许可 |
 |---|---|---|---|
-| WhateverXe | 0.8.0 | [WhateverXe 项目](https://github.com/)（实验性 Iris Xe 驱动路线） | 见上游 |
+| WhateverXe | 0.8.0 + 本机补丁 | [WhateverXe 项目](https://github.com/b00t0x/WhateverXe)（实验性 Iris Xe 驱动路线） | 见上游（BSD-3-Clause） |
 | WhateverXe-Graphics（pkg） | 0.4.1 | 同上 | 见上游 |
 | WhateverGreen | — | [Acidanthera](https://github.com/acidanthera/WhateverGreen) | BSD-3-Clause |
 
 > `WhateverGreen.kext` 在 `Kexts/` 里保留但**未启用**（与 WhateverXe 冲突）。
+
+> **注意：本仓库里的 `WhateverXe.kext` 不是上游原版。**
+> 为了让这台机器的内屏亮度可用，`WhateverXe/kern_host.cpp` 做了两处修改
+> （`_UID` 支持 `OSNumber`、总是注入 `F<uid>T<product>` 曲线表），并新增了
+> `WhateverXe/kern_backlight_profile.hpp`。补丁以 unified diff 形式提供在
+> [`patches/kern_host.cpp.diff`](patches/kern_host.cpp.diff) 与
+> [`patches/kern_backlight_profile.hpp`](patches/kern_backlight_profile.hpp)，
+> 可对上游 `main` 分支直接 `patch -p1` 后按项目自带 `tools/build.py` 重新构建。
+> 二进制 sha256：本仓库 `d9f45be1…`（1,821,640 字节）／上游 0.8.0 release `10735cdf…`（1,720,264 字节）。
+> 原理见 [`04-fixes-explained.md`](04-fixes-explained.md) 第 8 节。
 
 ## 网络
 

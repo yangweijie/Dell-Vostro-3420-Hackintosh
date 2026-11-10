@@ -1,0 +1,55 @@
+--- kern_host.upstream.cpp	2026-11-10 12:46:42.829464400 +0800
++++ WhateverXe__kern_host.cpp	2026-11-10 12:46:26.380511900 +0800
+@@ -306,11 +306,19 @@
+ }
+ 
+ bool XeHost::wrapPanelSetDisplay(IOService *panel,IOService *display) {
+- // Add only the missing UID-19 profile for an actual internal 16-bit PWM
+- // display. Keep Apple's/custom profiles and the native selection algorithm.
++ // Add only the missing F16/F19 software profile for an actual internal
++ // 16-bit PWM display. UID 16 is the classic WhateverGreen PNLF; UID 19 is
++ // the later custom device. Keep Apple's/custom profiles and native selection.
+  // No string patch, product-ID list, ACPI path or model-specific table.
+  auto provider=panel ? panel->getProvider() : nullptr;
+- auto uid=provider ? OSDynamicCast(OSString,provider->getProperty("_UID")) : nullptr;
++ auto uidProp=provider ? provider->getProperty("_UID") : nullptr;
++ unsigned panelUid=0;
++ if(auto uid=OSDynamicCast(OSString,uidProp))
++  panelUid=uid->isEqualTo("19") ? 19u : uid->isEqualTo("16") ? 16u : 0u;
++ else if(auto uid=OSDynamicCast(OSNumber,uidProp)) {
++  const auto v=uid->unsigned32BitValue();
++  panelUid=(v==16 || v==19) ? v : 0u;
++ }
+  auto product=display ? OSDynamicCast(OSNumber,display->getProperty("DisplayProductID")) : nullptr;
+  bool owned=false;
+  IOFramebuffer *framebuffer=nullptr;
+@@ -327,12 +335,16 @@
+  const bool range=owned && internal && framebuffer &&
+   framebuffer->getAttributeForConnection(0,'bklt',pwm)==kIOReturnSuccess;
+  OSDictionary *heldProfiles=nullptr;
+- if(range && uid && product && pwm[1]<=UINT32_MAX && pwm[2]<=UINT32_MAX &&
+-    XeBacklightProfile::eligible(uid->isEqualTo("19") ? 19 : 0,pwm[1],pwm[2],internal)) {
++ if(range && product && pwm[1]<=UINT32_MAX && pwm[2]<=UINT32_MAX &&
++    XeBacklightProfile::eligible(panelUid,pwm[1],pwm[2],internal)) {
+   auto original=OSDynamicCast(OSDictionary,panel->getProperty("ApplePanels"));
+   if(original && !panel->getProperty("ApplePanel")) {
+-   char key[32];snprintf(key,sizeof(key),"F19T%04x",product->unsigned32BitValue());
+-   if(!original->getObject(key) && !original->getObject("F19")) {
++   char key[32];
++   snprintf(key,sizeof(key),"F%uT%04x",panelUid,product->unsigned32BitValue());
++   // Stock AppleBacklight already ships a generic F16 table. Native prefers
++   // F<uid>T<product> over F<uid>, so inject the 16-bit product key even when
++   // F16/F19 exists. Only skip an exact product profile the user already has.
++   if(!original->getObject(key)) {
+     auto copy=OSDictionary::withDictionary(original);
+     auto curve=OSData::withBytes(XeBacklightProfile::curve,sizeof(XeBacklightProfile::curve));
+     if(copy && curve && copy->setObject(key,curve) && panel->setProperty("ApplePanels",copy)) {
+@@ -346,7 +358,7 @@
+    }
+   }
+  }
+- uint32_t inputs[]={1,owned,uid && uid->isEqualTo("19"),range ? static_cast<uint32_t>(pwm[1]) : ~0U,
++ uint32_t inputs[]={2,owned,panelUid,range ? static_cast<uint32_t>(pwm[1]) : ~0U,
+   range ? static_cast<uint32_t>(pwm[2]) : 0,0};
+  const bool result=FunctionCast(wrapPanelSetDisplay,callbackHost->orgPanelSetDisplay)(panel,display);
+  if(heldProfiles)heldProfiles->release();

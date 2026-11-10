@@ -429,3 +429,68 @@ ioreg -rc IOBluetoothHCIController -l -w0 | grep -E "BluetoothTransportConnected
 "Not compatible with Wi-Fi + Bluetooth combos"，我据此排除了它；
 但它的 `Info.plist` 里明确有 `RealtekBluetoothFirmware_0bda_c829` 这一项，实测完全可用。
 **判断一个 kext 支不支持你的设备，看它的匹配表，别只看 README。**
+
+## 8. 内屏亮度：滑块能拖、屏幕不变（本项目最难的一处）
+
+**现象**
+
+- 控制中心里**有**亮度滑块，但拖到底屏幕毫无变化
+- 系统设置 → 显示器里反而**没有**亮度滑块
+- Fn+F6 / Fn+F7 按下去毫无反应
+
+**诊断**：把「按键 → macOS → 背光」拆成三段分别取证
+
+| 环节 | 结果 |
+| --- | --- |
+| ACPI 链路 | `_Q66 → NEVT() → EV3() → GFX0.BRT6() → Notify(LCD, 0x86/0x87)` |
+| 通知是否到达 macOS | **到达了**。`BrightnessKeys` 的属性 `BrightnessPanel = LCD` 只在收到 0x86/0x87 后才写入 |
+| 按键是否产生 HID 事件 | 否（30 秒 `HIDIdleTime` 采样零重置，外接键盘对照为 10 次）——它走 ACPI 通知，不走扫描码 |
+| 背光驱动 | `AppleBacklight 180.12` + `AppleBacklightExpert` 已加载，`AppleBacklightDisplay` 挂在 `IGPU@2/AppleIntelFramebuffer@0/display0` |
+| 系统亮度值 | 永远 `65535/65535`（100%），90 个采样点无变化 |
+| 内核告警 | `(AppleIntelTGLGraphicsFramebuffer) [IGFB][ERROR][DISPLAY] EFI using a different backlight frequency` |
+
+结论：**按键和通知都是通的，断在背光这一层**——macOS 的 `AppleBacklight` 找不到这台面板对应的亮度曲线表。
+
+**根因**
+
+`AppleBacklight` 会到 `PNLF` 设备的 `ApplePanels` 里按 `F<uid>T<product-id>` 查一张 16-bit PWM 曲线表
+（`uid` 取自 ACPI `PNLF._UID`，`product-id` 取自显示器的 `DisplayProductID`）。
+WhateverXe 上游已经有一段注入逻辑，但两处判断让它在我们的机器上必然失效：
+
+1. 它用 `OSDynamicCast<OSString>` 读 `_UID`，而 ACPI 里写的是 `Name (_UID, 0x13)` —— 这是**整数**，取到 null，直接跳过；
+2. 它只在 `ApplePanels` 里既没有 `F19Txxxx` 也没有 `F19` 时才注入，而系统自带 `F19` 模板，所以永远跳过。
+
+**改法（两部分，缺一不可）**
+
+1. `SSDT-PNLF.aml`：`_UID` 从 `Zero` 改成 **`0x13`**（= 19，即 WhateverXe 认的 custom-profile 档位）。
+   反编译新旧 AML，差异只有这一行。
+2. 自编译 `WhateverXe.kext`（0.8.0 + 本机补丁），改 `WhateverXe/kern_host.cpp` 的 `wrapPanelSetDisplay`：
+   - `_UID` 同时接受 `OSString` 和 `OSNumber`；
+   - **总是**注入产品级键 `F<uid>T<product-id>`（本机是 `F19Ta95`），因为原生选择逻辑优先用 `F<uid>T<product>` 而不是 `F<uid>`；
+   - 曲线表放在新增的 `WhateverXe/kern_backlight_profile.hpp`（16-bit PWM）。
+
+补丁在 [`patches/`](patches/) 目录：`kern_host.cpp.diff` + `kern_backlight_profile.hpp`，
+基于上游 `main` 分支。仓库里的 `WhateverXe` 二进制就是这个补丁的构建产物
+（1,821,640 字节，sha256 `d9f45be1…`；上游 0.8.0 release 是 1,720,264 字节 / `10735cdf…`）。
+
+**验证**
+
+```bash
+# 当前亮度：第 1 个 value 是真正生效的亮度（0–65536）
+ioreg -c AppleBacklightDisplay -l -w0 | tr ',' '\n' | grep -oE 'value"=[0-9]+' | head -4
+```
+
+按住 Fn+F7 / Fn+F6，这个值应逐档变化。本机实测：
+
+```text
+亮度值  6750     ← 起始
+亮度值 12713     ← Fn+F7
+亮度值 23033     ← Fn+F7
+亮度值 12713     ← Fn+F6
+```
+
+**坑（很重要）**
+
+修复后用 `bklt` 判断是否生效会得到**错误结论**。这台机器上 `bklt` 恒定在 `4000` 不动，
+真正跟着按键变的是 `IODisplayParameters` 里另一个 `brightness` 项（即上面命令输出的第 1 个值）。
+我第一次验证时就因为只盯 `bklt`，误判成"修了也没用"。

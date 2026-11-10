@@ -49,46 +49,21 @@ Tiger Lake 的 GPIO 中断在 `VoodooGPIO` 里没有可靠实现，因此用 `-v
 `Misc → Boot → Timeout = 0` 是为了排错时能停在菜单（本仓库保持验收时的值）。
 希望自动进系统的话，把 `Timeout` 改成 `3`～`5` 即可。
 
-## 8. Fn 快捷键：亮度不可调，F8 / F10 没有对应功能
 
-### 8.1 Fn+F6 / F7（亮度）—— 信号到了，背光没跟上
+## 8. Fn 快捷键
 
-现象：按 Fn+F6/F7 无任何反应；控制中心里**有**亮度滑块，但拖到底屏幕不变；
-系统设置 → 显示器里干脆没有滑块。
+### 8.1 亮度（已解决）
 
-这不是键位映射问题。实测证据：
+Fn+F6 / F7 与控制中心亮度滑块现在都正常工作。这一条曾经是"背光由 EC 控制、macOS 接管不了"的
+死结，最终靠两部分改掉：
 
-| 环节 | 结果 |
-| --- | --- |
-| ACPI 链路 | `DSDT: _Q66 → NEVT() → EV3() → GFX0.BRT6() → Notify(LCD, 0x86/0x87)` |
-| 通知是否到达 macOS | **到达了**。`BrightnessKeys` 的实例属性 `BrightnessPanel = LCD` 只在收到 0x86/0x87 后才写入 |
-| 按键是否产生 HID 事件 | 否（30 秒 `HIDIdleTime` 采样零重置，外接键盘对照为 10 次）——因为它走 ACPI 通知而非扫描码 |
-| 系统亮度值 | `bklt` 恒为 `65535/65535`（100%），90 个采样点无变化 |
-| 背光驱动 | `AppleBacklight 180.12` + `AppleBacklightExpert` 已加载，`AppleBacklightDisplay` 挂在 `IGPU@2/AppleIntelFramebuffer@0/display0` |
-| 内核告警 | `(AppleIntelTGLGraphicsFramebuffer) [IGFB][ERROR][DISPLAY] EFI using a different backlight frequency` |
+1. `SSDT-PNLF.aml` 的 `_UID` 从 `Zero` 改为 `0x13`（19）
+2. 自编译 `WhateverXe`，让它在 `ApplePanels` 里注入产品级 16-bit PWM 曲线 `F19Ta95`
 
-**真正的断点在背光硬件控制**：本机背光走 DSDT 的 `LCD._BCM`（BIOS/EC 经 SMI 控制），
-而不是 PCH 的 PWM 寄存器。WhateverXe 文档把「某些背光方式」列为已知限制，
-同平台的 Tiger Lake 开源方案也多把 Brightness 列为 Not Working。
+完整诊断链、验证命令和踩过的坑见 [`04-fixes-explained.md`](04-fixes-explained.md) 第 8 节。
 
-已试过无效：给 iGPU 加 `applbkl = <01000000>`（强制 AppleBacklight 走 PWM）并重启，
-属性确认已生效（`ioreg -l -w0 -n IGPU` 可见 `"applbkl" = <01000000>`），但 `bklt` 仍恒为 65535。
-
-自检命令：
-
-```bash
-# 当前背光值：第 2 个 value 是 bklt，恒 65535 说明背光没被接管
-ioreg -c AppleBacklightDisplay -l -w0 | tr ',' '\n' | grep -oE 'value"=[0-9]+' | head -4
-
-# 非空（如 "LCD"）= ACPI 亮度通知确实到达了 macOS，问题不在按键
-ioreg -l -w0 | grep -oE '"BrightnessPanel" = [^,]*'
-
-# 检查 applbkl 是否注入成功
-ioreg -l -w0 -n IGPU | grep -oE '"applbkl" = <[0-9a-f]*>'
-```
-
-如果将来 WhateverXe 支持了这台机器的背光方式，Fn+F6/F7 **不需要再改任何配置**就会跟着好，
-因为按键到 `BrightnessKeys` 这一段已经是通的。
+如果你用的是别处的 EFI（没有这两处改动），会看到：控制中心有滑块但拖动无效、
+系统设置 → 显示器没有滑块、Fn+F6/F7 无反应。
 
 ### 8.2 Fn+F8（投屏）/ Fn+F10（PrtSc）
 
@@ -107,23 +82,9 @@ Fn+F5–F9 是 macro 序列，**Fn+F10 干脆 `no code`**（硬件不发码）�
 
 音量减 / 音量加 / 静音 / 播放暂停走标准 PS/2 媒体扫描码，`VoodooPS2Keyboard` 原生支持。
 
-### 8.4 想让屏幕暗一点，能用什么（亮度不可调时的替代）
+### 8.4 关于「降低白点值」
 
-先说明一个坑：**网上常见的「系统设置 → 辅助功能 → 显示 → 降低白点值」在 macOS 26 上已经没有了**。
-导出 Tahoe 辅助功能面板的搜索索引可以看到，显示类只剩这些：
-
-```
-色彩滤镜 / 滤镜类型 / 显示对比度 / 增强对比度 / 反转显示颜色 / 降低透明度 / 高对比度
-```
-
-`Reduce White Point` 这个字符串在系统里只出现在「语音控制」的命令名清单中，设置界面已移除。
-（另外显示器设置页的搜索索引里有「显示器亮度」这一项，说明 Tahoe 本来有亮度控件，
-只是本机上报不出背光能力，所以没有显示——和 8.1 是同一个根因。）
-
-不依赖背光、实测可用的替代方案：
-
-| 方案 | 路径 | 效果 | 备注 |
-| --- | --- | --- | --- |
-| 夜览 | 系统设置 → 显示器 → 夜览 | 整体偏暖，夜间刺眼感明显下降 | 本机实测可用，可按时段自动开启，可加到控制中心 |
-| 色彩滤镜（色彩色调） | 系统设置 → 辅助功能 → 显示 → 色彩滤镜 | 选深灰/深色 + 调高强度，等效于给整屏叠一层暗色 | 走 GPU 色彩滤镜，不需要背光，一定能用 |
-| 显示器校准 | 系统设置 → 显示器 → 颜色描述文件 → 校准… | 校准过程中压低亮度/对比度，写入 ColorSync 配置 | 属于 GPU 查找表层面的调整，同样不依赖背光 |
+macOS 26 已把这个选项从辅助功能里移除（导出 Tahoe 的辅助功能搜索索引可以看到，
+显示类只剩 色彩滤镜 / 对比度 / 反转颜色 / 降低透明度 / 高对比度）。
+现在亮度本身已经可调，不再需要它；若仍想进一步降低刺眼感，可用
+`系统设置 → 辅助功能 → 显示 → 色彩滤镜` 的「色彩色调」。
