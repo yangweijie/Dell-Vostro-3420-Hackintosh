@@ -1,7 +1,12 @@
 # 第三方组件与致谢
 
-本仓库**没有修改任何 kext 的二进制**。唯一的改动是 `VoodooI2C.kext/Contents/Info.plist`
-里增加了一个 PCI ID（纯文本 plist 编辑，附带一键脚本 `scripts/apply-voodooi2c-tgl.sh`）。
+本仓库对个别 kext 做过**二进制补丁**（不是上游原版），其余均为文本配置或 plist 改动。
+已知的两处二进制补丁：
+
+- `WhateverXe.kext`：为内屏亮度打的补丁（见下方「显卡」节）
+- `VoodooPS2Controller.kext` 内嵌的 `VoodooPS2Keyboard`：为 Caps Lock 指示灯打的补丁（见 [`04-fixes-explained.md`](04-fixes-explained.md) 第 9 节）
+
+此外 `VoodooI2C.kext/Contents/Info.plist` 增加了一个 PCI ID（纯文本 plist 编辑，附带一键脚本 `scripts/apply-voodooi2c-tgl.sh`）。
 
 各组件版权归各自作者所有，本仓库不重新授权它们。**准确的许可条款请以各上游仓库的 LICENSE 为准**
 （下表标注的许可证仅作参考，如有出入以上游为准）。
@@ -36,6 +41,17 @@
 > 可对上游 `main` 分支直接 `patch -p1` 后按项目自带 `tools/build.py` 重新构建。
 > 二进制 sha256：本仓库 `d9f45be1…`（1,821,640 字节）／上游 0.8.0 release `10735cdf…`（1,720,264 字节）。
 > 原理见 [`04-fixes-explained.md`](04-fixes-explained.md) 第 8 节。
+
+### VoodooPS2（键盘 / Caps Lock 指示灯）
+
+> **注意：本仓库里的 `VoodooPS2Keyboard`（内嵌于 `VoodooPS2Controller.kext`）不是上游原版。**
+> 上游 `VoodooPS2Keyboard` 2.3.8 在 macOS 10.14+ 上会把 Caps Lock 的 LED 更新整个吞掉
+> （Sierra 遗留 workaround 先置 `_ignoreCapsLedChange = true` 再 dispatch，导致 `setAlphaLockFeedback()`
+> 永远提前 `return`、不调 `setLEDs()`），于是 Caps LED 自开机起常亮、无法熄灭。
+> 本仓库在文件偏移 `0x1d37` 把 `je`（0x74）改成 `jmp`（0xeb）一个字节，
+> 让 `setAlphaLockFeedback` 恒执行 `setLEDs()`。原版备份见同目录 `VoodooPS2Keyboard.stock-bak`。
+> 二进制 sha256 前 16 位：`0690ed9fd5f20404`。
+> 原理见 [`04-fixes-explained.md`](04-fixes-explained.md) 第 9 节。
 
 ## 网络
 

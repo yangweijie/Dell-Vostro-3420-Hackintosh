@@ -494,3 +494,52 @@ ioreg -c AppleBacklightDisplay -l -w0 | tr ',' '\n' | grep -oE 'value"=[0-9]+' |
 修复后用 `bklt` 判断是否生效会得到**错误结论**。这台机器上 `bklt` 恒定在 `4000` 不动，
 真正跟着按键变的是 `IODisplayParameters` 里另一个 `brightness` 项（即上面命令输出的第 1 个值）。
 我第一次验证时就因为只盯 `bklt`，误判成"修了也没用"。
+
+---
+
+## 9. Caps Lock 指示灯：常亮、无法熄灭
+
+**现象**
+
+- Caps 键能切换输入法（本机把 Caps 映射成「中 / 英切换」，`HIDKeyboardCapsLockDoesLock = No`）
+- 但 Caps LED 自开机起一直常亮，按 Caps 切输入法时灯也不灭、无法熄灭
+
+**诊断**（读 `VoodooPS2Keyboard` 2.3.8 源码 + 反汇编 kext 确认）
+
+| 证据 | 结论 |
+| --- | --- |
+| `HIDKeyboardCapsLockDoesLock = No` | macOS 把 Caps 当「切换输入法」，不是真正的大小写锁定 |
+| 源码 `setAlphaLockFeedback()` 一开头判 `_ignoreCapsLedChange` | 该标志为 true 时直接 `return`，永不调 `setLEDs()` |
+| Sierra 遗留 workaround：每次按 Caps（macOS 10.14+ 必走）先置 `_ignoreCapsLedChange=true` 再 dispatch | 标志永远被置位 → LED 更新路径被整个吞掉 |
+| 对照 `setNumLockFeedback` 没有这个抑制 | 仅 Caps LED 受影响，Num / Scroll 不受影响 |
+
+结论：**LED 自开机就停在初始态（本机初始为亮），按键、切输入法都改不了它**。这是驱动 bug，不是配置问题，BIOS 里也没有对应开关。
+
+**改法**（二进制 patch，无需重编译）
+
+`setAlphaLockFeedback` 反汇编：
+
+```
+0x1d30  cmpb  $0x0, 0x1010(%rdi)   ; if (_ignoreCapsLedChange == 0)
+0x1d37  je    0x1d42               ;   → 跳去真正设置 LED
+0x1d39  movb  $0x0, 0x1010(%rdi)  ; 否则清标志
+0x1d40  popq  %rbp
+0x1d41  retq                      ; ← 直接返回，LED 永不变
+0x1d42  ...实际 setLEDs(...)...
+```
+
+把 `je`（机器码 `74`）改成 `jmp`（机器码 `eb`）——**文件偏移 `0x1d37` 一个字节**。
+`__text` 段 `sectaddr == sectoff`，虚拟地址 == 文件偏移，所以补丁点就在文件偏移 `0x1d37`。
+改后该函数恒执行 `setLEDs()`，LED 跟随状态。
+
+**验证**
+
+重启后 Caps LED 跟随输入法：ABC 模式亮、切到拼音灭，来回按能亮 / 灭切换。本机实测正常。
+
+**注意**
+
+- 这个补丁只改 `VoodooPS2Keyboard`（内嵌于 `VoodooPS2Controller.kext` 的插件）。
+  仓库里这份就是补丁版，二进制 sha256 前 16 位 `0690ed9fd5f20404`；原版备份见同目录 `VoodooPS2Keyboard.stock-bak`。
+- 回滚：把 `VoodooPS2Keyboard.stock-bak` 改名覆盖回来即可。
+- 区分：Caps LED 修复与第 8 节的内屏亮度修复是**两回事**——亮度走 `AppleBacklight` + `WhateverXe`，
+  Caps LED 走 `VoodooPS2Keyboard` 的 `setLEDs()`，互不影响。
